@@ -130,6 +130,4 @@ internal enum UsnChangeReasons : uint
     /// The given stream is modified through a TxF transaction.
     /// </summary>
     TransactedChange = 0x00400000,
-
-
 }
