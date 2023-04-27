@@ -1,4 +1,5 @@
 ﻿using Microsoft.Win32.SafeHandles;
+using System.ComponentModel;
 
 namespace JournalReader;
 
@@ -20,26 +21,33 @@ internal sealed class VolumeMap
     /// Creates a map of local volumes. In the event of a collision which prevents constructing a serial -> path mapping,
     /// a warning is logged and those volumes are excluded from the map. On failure, returns null.
     /// </summary>
-    public static VolumeMap CreateMapOfAllLocalVolumes()
+    public static Possible<VolumeMap> CreateMapOfAllLocalVolumes()
     {
         var map = new VolumeMap();
-        List<(VolumeGuidPath volumeGuidPath, ulong serial)> volumes = Native.ListVolumeGuidPathsAndSerials();
 
-        foreach (var volume in volumes)
+        try
         {
-            VolumeGuidPath collidedGuidPath;
-            if (map.m_volumePathsBySerial.TryGetValue(volume.serial, out collidedGuidPath))
+            List<(VolumeGuidPath volumeGuidPath, ulong serial)> volumes = Native.ListVolumeGuidPathsAndSerials();
+            foreach (var volume in volumes)
             {
-                if (collidedGuidPath.IsValid)
+                VolumeGuidPath collidedGuidPath;
+                if (map.m_volumePathsBySerial.TryGetValue(volume.serial, out collidedGuidPath))
                 {
-                    // Poison this entry so that we know it is unusable on lookup (ambiguous)
-                    map.m_volumePathsBySerial[volume.serial] = VolumeGuidPath.Invalid;
+                    if (collidedGuidPath.IsValid)
+                    {
+                        // Poison this entry so that we know it is unusable on lookup (ambiguous)
+                        map.m_volumePathsBySerial[volume.serial] = VolumeGuidPath.Invalid;
+                    }
+                }
+                else
+                {
+                    map.m_volumePathsBySerial.Add(volume.serial, volume.volumeGuidPath);
                 }
             }
-            else
-            {
-                map.m_volumePathsBySerial.Add(volume.serial, volume.volumeGuidPath);
-            }
+        }
+        catch (Win32Exception ex)
+        { 
+            return new Failure<string>(ex.Message);
         }
 
         return map;

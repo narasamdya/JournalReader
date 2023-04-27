@@ -115,7 +115,7 @@ internal class Native
         public readonly uint FileAttributes;
         public readonly ushort FileNameLength;
         public readonly ushort FileNameOffset;
-        // public readonly char* FileName;
+        public readonly char* FileName;
 
         // WCHAR FileName[1];
     }
@@ -159,7 +159,7 @@ internal class Native
         public readonly uint FileAttributes;
         public readonly ushort FileNameLength;
         public readonly ushort FileNameOffset;
-        // public readonly char* FileName;
+        public readonly char* FileName;
 
         // WCHAR FileName[1];
     }
@@ -474,7 +474,7 @@ internal class Native
         return volumeList;
     }
 
-    public static Possible<(VolumeGuidPath volumeGuidPath, ulong serial), Failure<string>> GetVolumeGuidPathAndSerialOrFail(string volumeMountPoint)
+    public static Possible<(VolumeGuidPath volumeGuidPath, ulong serial)> GetVolumeGuidPathAndSerialOrFail(string volumeMountPoint)
     {
         try
         {
@@ -539,6 +539,8 @@ internal class Native
         bool ioctlSuccess;
         int error;
 
+        string fsctlApi = isJournalUnprivileged ? "FSCTL_READ_UNPRIVILEGED_USN_JOURNAL" : "FSCTL_READ_USN_JOURNAL";
+
         fixed (byte* pRecordBuffer = buffer)
         {
             ioctlSuccess = DeviceIoControl(
@@ -580,7 +582,7 @@ internal class Native
             return new ReadUsnJournalResult(errorStatus, nextUsn: new Usn(0), records: null);
         }
 
-        Contract.Assume(
+        Contract.Assert(
             bytesReturned >= sizeof(ulong),
             "The output buffer should always contain the updated USN cursor (even if no records were returned)");
 
@@ -590,34 +592,36 @@ internal class Native
         {
             nextUsn = *(ulong*)recordBufferBase;
             byte* currentRecordBase = recordBufferBase + sizeof(ulong);
-            Contract.Assume(currentRecordBase != null);
+            Contract.Assert(currentRecordBase != null);
 
             // One past the end of the record part of the buffer
             byte* recordsEnd = recordBufferBase + bytesReturned;
 
             while (currentRecordBase < recordsEnd)
             {
-                Contract.Assume(
+                Contract.Assert(
                     currentRecordBase + NativeUsnRecordHeader.Size <= recordsEnd,
-                    "Not enough data returned for a valid USN record header");
+                    $"Not enough data returned for a valid USN record header. The size of a valid header is {NativeUsnRecordHeader.Size} bytes, but only {bytesReturned - sizeof(ulong)} byte(s) returned.");
 
                 NativeUsnRecordHeader* currentRecordHeader = (NativeUsnRecordHeader*)currentRecordBase;
 
-                Contract.Assume(
+                Contract.Assert(
                     currentRecordBase + currentRecordHeader->RecordLength <= recordsEnd,
                     "RecordLength field advances beyond the buffer");
 
                 if (currentRecordHeader->MajorVersion == 3)
                 {
-                    Contract.Assume(!forceJournalVersion2);
+                    Contract.Assert(!forceJournalVersion2);
                     if (!(currentRecordHeader->RecordLength >= NativeUsnRecordV3.MinimumSize &&
                          currentRecordHeader->RecordLength <= NativeUsnRecordV3.MaximumSize))
                     {
-                        Contract.Assert(false, $"Size in record header does not correspond to a valid USN_RECORD_V3. Header record length: {currentRecordHeader->RecordLength} (valid length: {NativeUsnRecordV3.MinimumSize} <= length <= {NativeUsnRecordV3.MaximumSize})");
+                        Contract.Assert(
+                            false,
+                            $"Size in record header returned by {fsctlApi} does not correspond to a valid USN_RECORD_V3. Record length: {currentRecordHeader->RecordLength} (valid length: {NativeUsnRecordV3.MinimumSize} <= length <= {NativeUsnRecordV3.MaximumSize}");
                     }
 
                     NativeUsnRecordV3* record = (NativeUsnRecordV3*)currentRecordBase;
-                    string fileName = string.Empty; //  Encoding.Unicode.GetString(currentRecordBase + record->FileNameOffset, record->FileNameLength);
+                    string fileName = Encoding.Unicode.GetString(currentRecordBase + record->FileNameOffset, record->FileNameLength);
 
                     recordsToReturn.Add(
                         new UsnRecord(
@@ -633,11 +637,13 @@ internal class Native
                     if (!(currentRecordHeader->RecordLength >= NativeUsnRecordV2.MinimumSize &&
                           currentRecordHeader->RecordLength <= NativeUsnRecordV2.MaximumSize))
                     {
-                        Contract.Assert(false, $"Size in record header does not correspond to a valid USN_RECORD_V2. Header record length: {currentRecordHeader->RecordLength} (valid length: {NativeUsnRecordV2.MinimumSize} <= length <= {NativeUsnRecordV2.MaximumSize})");
+                        Contract.Assert(
+                            false,
+                            $"Size in record header returned by {fsctlApi} does not correspond to a valid USN_RECORD_V3. Record length: {currentRecordHeader->RecordLength} (valid length: {NativeUsnRecordV2.MinimumSize} <= length <= {NativeUsnRecordV2.MaximumSize}");
                     }
 
                     NativeUsnRecordV2* record = (NativeUsnRecordV2*)currentRecordBase;
-                    string fileName = string.Empty; //  Encoding.Unicode.GetString(currentRecordBase + record->FileNameOffset, record->FileNameLength);
+                    string fileName = Encoding.Unicode.GetString(currentRecordBase + record->FileNameOffset, record->FileNameLength);
                     recordsToReturn.Add(
                         new UsnRecord(
                             new FileId(0, record->FileReferenceNumber),
@@ -649,10 +655,7 @@ internal class Native
                 }
                 else
                 {
-                    Contract.Assume(
-                        false,
-                        "An unrecognized record version was returned, even though version 2 or 3 was requested.");
-                    throw new InvalidOperationException("Unreachable");
+                    throw new NotSupportedException($"An unsupported major record version '{currentRecordHeader->MajorVersion}' was returned by {fsctlApi}, even though version 2 or 3 was requested.");
                 }
 
                 currentRecordBase += currentRecordHeader->RecordLength;
@@ -665,7 +668,6 @@ internal class Native
     public static QueryUsnJournalResult TryQueryUsnJournal(SafeFileHandle volumeHandle)
     {
         var data = new QueryUsnJournalData();
-
         bool ioctlSuccess = DeviceIoControl(
             volumeHandle,
             ioControlCode: NativeIOConstants.FsctlQueryUsnJournal,
@@ -673,7 +675,7 @@ internal class Native
             inputBufferSize: 0,
             outputBuffer: data,
             outputBufferSize: QueryUsnJournalData.Size,
-            bytesReturned: out int bytesReturned,
+            bytesReturned: out _,
             overlapped: IntPtr.Zero);
         int error = Marshal.GetLastWin32Error();
 
@@ -743,30 +745,30 @@ internal class Native
 
         NativeUsnRecordHeader* recordHeader = (NativeUsnRecordHeader*)recordBuffer;
 
-        Contract.Assume(
+        Contract.Assert(
             bytesReturned >= NativeUsnRecordHeader.Size,
-            "Not enough data returned for a valid USN record header");
+            $"Not enough data returned for a valid USN record header. The size of a valid header is {NativeUsnRecordHeader.Size} bytes, but only {bytesReturned} byte(s) returned.");
 
-        Contract.Assume(
+        Contract.Assert(
             bytesReturned == recordHeader->RecordLength,
-            "RecordLength field disagrees from number of bytes actually returned; but we were expecting exactly one record.");
+            $"RecordLength field disagrees from number of bytes actually returned; but we were expecting exactly one record. Record length should be {recordHeader->RecordLength} byte(s), but only {bytesReturned} byte(s) returned.");
 
         UsnRecord resultRecord;
         if (recordHeader->MajorVersion == 3)
         {
-            Contract.Assume(!forceJournalVersion2);
+            Contract.Assert(!forceJournalVersion2);
 
-            Contract.Assume(
+            Contract.Assert(
                 bytesReturned >= NativeUsnRecordV3.MinimumSize && bytesReturned <= NativeUsnRecordV3.MaximumSize,
-                "FSCTL_READ_FILE_USN_DATA returned an amount of data that does not correspond to a valid USN_RECORD_V3.");
+                $"FSCTL_READ_FILE_USN_DATA returned an amount of data that does not correspond to a valid USN_RECORD_V3. Record length: {bytesReturned} (valid length: {NativeUsnRecordV3.MinimumSize} <= length <= {NativeUsnRecordV3.MaximumSize}.");
 
             NativeUsnRecordV3* record = (NativeUsnRecordV3*)recordBuffer;
 
-            Contract.Assume(
+            Contract.Assert(
                 record->Reason == 0 && record->TimeStamp == 0 && record->SourceInfo == 0,
-                "FSCTL_READ_FILE_USN_DATA scrubs these fields. Marshalling issue?");
+                "FSCTL_READ_FILE_USN_DATA scrubs 'Reason', 'TimeStamp', and 'SourceInfo' fields. Marshalling issue?");
 
-            string fileName = string.Empty; //  Encoding.Unicode.GetString(recordBuffer + record->FileNameOffset, record->FileNameLength);
+            string fileName = Encoding.Unicode.GetString(recordBuffer + record->FileNameOffset, record->FileNameLength);
 
             resultRecord = new UsnRecord(
                 record->FileReferenceNumber,
@@ -778,15 +780,15 @@ internal class Native
         }
         else if (recordHeader->MajorVersion == 2)
         {
-            Contract.Assume(
+            Contract.Assert(
                 bytesReturned >= NativeUsnRecordV2.MinimumSize && bytesReturned <= NativeUsnRecordV2.MaximumSize,
-                "FSCTL_READ_FILE_USN_DATA returned an amount of data that does not correspond to a valid USN_RECORD_V2.");
+                $"FSCTL_READ_FILE_USN_DATA returned an amount of data that does not correspond to a valid USN_RECORD_V2. Record length: {bytesReturned} (valid length: {NativeUsnRecordV2.MinimumSize} <= length <= {NativeUsnRecordV2.MaximumSize}.");
 
             NativeUsnRecordV2* record = (NativeUsnRecordV2*)recordBuffer;
 
-            Contract.Assume(
+            Contract.Assert(
                 record->Reason == 0 && record->TimeStamp == 0 && record->SourceInfo == 0,
-                "FSCTL_READ_FILE_USN_DATA scrubs these fields. Marshalling issue?");
+                "FSCTL_READ_FILE_USN_DATA scrubs 'Reason', 'TimeStamp', and 'SourceInfo' fields. Marshalling issue?");
 
             string fileName = string.Empty; // Encoding.Unicode.GetString(recordBuffer + record->FileNameOffset, record->FileNameLength);
 
@@ -800,8 +802,7 @@ internal class Native
         }
         else
         {
-            Contract.Assume(false, "An unrecognized record version was returned, even though version 2 or 3 was requested.");
-            throw new InvalidOperationException("Unreachable");
+            throw new NotSupportedException($"An unsupported major record version '{recordHeader->MajorVersion}' was returned by FSCTL_READ_FILE_USN_DATA, even though version 2 or 3 was requested.");
         }
 
         return resultRecord;
@@ -833,14 +834,14 @@ internal class Native
             throw new Win32Exception(error, "DeviceIoControl(FSCTL_WRITE_USN_CLOSE_RECORD)");
         }
 
-        Contract.Assume(bytesReturned == sizeof(ulong));
+        Contract.Assert(bytesReturned == sizeof(ulong));
 
         return new Usn(writtenUsn);
     }
 
     public static ulong GetVolumeSerialNumberByHandle(SafeFileHandle fileHandle)
     {
-        FileIdAndVolumeId? maybeInfo = TryGetFileIdAndVolumeIdByHandle(fileHandle);
+        FileIdAndVolumeId? maybeInfo = GetFileIdAndVolumeIdByHandleOrNull(fileHandle);
         if (maybeInfo.HasValue)
         {
             return maybeInfo.Value.VolumeSerialNumber;
@@ -849,7 +850,7 @@ internal class Native
         return GetShortVolumeSerialNumberByHandle(fileHandle);
     }
 
-    public static unsafe FileIdAndVolumeId? TryGetFileIdAndVolumeIdByHandle(SafeFileHandle fileHandle)
+    public static unsafe FileIdAndVolumeId? GetFileIdAndVolumeIdByHandleOrNull(SafeFileHandle fileHandle)
     {
         FileIdAndVolumeId info = default;
         return GetFileInformationByHandleEx(fileHandle, (uint)FileInfoByHandleClass.FileIdInfo, (IntPtr)(&info), FileIdAndVolumeId.Size)
@@ -878,6 +879,21 @@ internal class Native
         return serial;
     }
 
+    public static Possible<string[]> GetMountPointsForVolumeOrFail(VolumeGuidPath volumeGuidPath) => GetMountPointsForVolumeOrFail(volumeGuidPath.ToString());
+
+    public static Possible<string[]> GetMountPointsForVolumeOrFail(string volumeDeviceName)
+    {
+        try
+        {
+            return GetMountPointsForVolume(volumeDeviceName);
+        }
+        catch (Win32Exception ex)
+        {
+            return new Failure<string>(ex.Message);
+        }
+        
+    }
+
     public static string[] GetMountPointsForVolume(string volumeDeviceName)
     {
         var volumeNamePathBuffer = new StringBuilder(capacity: NativeIOConstants.MaxPath + 1);
@@ -896,7 +912,7 @@ internal class Native
 
         volumeNamePathBuffer.Clear();
 
-        if (!GetVolumePathNamesForVolumeNameW(volumeDeviceName, volumeNamePathBuffer, volumeNamePathBuffer.Capacity, out length))
+        if (!GetVolumePathNamesForVolumeNameW(volumeDeviceName, volumeNamePathBuffer, volumeNamePathBuffer.Capacity, out _))
         {
             throw new Win32Exception(Marshal.GetLastWin32Error());
         }

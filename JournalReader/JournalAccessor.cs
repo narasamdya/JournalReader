@@ -21,7 +21,7 @@ internal sealed class JournalAccessor
     /// </remarks>
     public bool IsJournalUnprivileged { get; set; }
 
-    public static Possible<JournalAccessor, Failure<string>> GetJournalAccessor(VolumeMap volumeMap, string path)
+    public static Possible<JournalAccessor> GetJournalAccessor(VolumeMap volumeMap, string path)
     {
         var journalAccessor = new JournalAccessor();
 
@@ -140,28 +140,35 @@ internal sealed class JournalAccessor
         }
     }
 
-    public static (FileIdAndVolumeId, UsnRecord)? GetVersionedFileIdentityByHandleOrNull(string path)
+    public static Possible<(FileIdAndVolumeId, UsnRecord)> GetVersionedFileIdentityByHandle(string path)
     {
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
-        return GetVersionedFileIdentityByHandleOrNull(stream.SafeFileHandle);
+        return GetVersionedFileIdentityByHandle(stream.SafeFileHandle);
     }
 
-    public static (FileIdAndVolumeId, UsnRecord)? GetVersionedFileIdentityByHandleOrNull(SafeFileHandle fileHandle)
+    public static Possible<(FileIdAndVolumeId, UsnRecord)> GetVersionedFileIdentityByHandle(SafeFileHandle fileHandle)
     {
-        UsnRecord? usnRecord = Native.ReadFileUsnByHandle(fileHandle);
-
-        // If usnRecord is null or 0, then fail!
-        if (!usnRecord.HasValue || usnRecord.Value.Usn.IsZero)
+        try
         {
-            return null;
+            UsnRecord? usnRecord = Native.ReadFileUsnByHandle(fileHandle);
+
+            // If usnRecord is null or 0, then fail!
+            if (!usnRecord.HasValue || usnRecord.Value.Usn.IsZero)
+            {
+                return new Failure<string>("USN record is null or 0");
+            }
+
+            FileIdAndVolumeId? maybeIds = Native.GetFileIdAndVolumeIdByHandleOrNull(fileHandle);
+
+            // A short volume serial isn't the first choice (fewer random bits), but we fall back to it if the long serial is unavailable.
+            var volumeSerial = maybeIds.HasValue ? maybeIds.Value.VolumeSerialNumber : Native.GetShortVolumeSerialNumberByHandle(fileHandle);
+
+            return (new FileIdAndVolumeId(volumeSerial, usnRecord.Value.FileId), usnRecord.Value);
         }
-
-        FileIdAndVolumeId? maybeIds = Native.TryGetFileIdAndVolumeIdByHandle(fileHandle);
-
-        // A short volume serial isn't the first choice (fewer random bits), but we fall back to it if the long serial is unavailable.
-        var volumeSerial = maybeIds.HasValue ? maybeIds.Value.VolumeSerialNumber : Native.GetShortVolumeSerialNumberByHandle(fileHandle);
-
-        return (new FileIdAndVolumeId(volumeSerial, usnRecord.Value.FileId), usnRecord.Value);
+        catch (Exception e)
+        {
+            return new Failure<string>(e.Message);
+        }
     }
 
     private OpenFileResult OpenVolumeHandle(VolumeGuidPath path, out SafeFileHandle? volumeHandle)
