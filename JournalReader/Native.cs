@@ -115,9 +115,9 @@ internal class Native
         public readonly uint FileAttributes;
         public readonly ushort FileNameLength;
         public readonly ushort FileNameOffset;
+#if !NO_FILENAME
         public readonly char* FileName;
-
-        // WCHAR FileName[1];
+#endif
     }
 
     /// <summary>
@@ -159,9 +159,9 @@ internal class Native
         public readonly uint FileAttributes;
         public readonly ushort FileNameLength;
         public readonly ushort FileNameOffset;
+#if !NO_FILENAME
         public readonly char* FileName;
-
-        // WCHAR FileName[1];
+#endif
     }
 
     /// <summary>
@@ -293,7 +293,9 @@ internal class Native
     public struct TOKEN_ELEVATION
     {
         /// <nodoc />
+#pragma warning disable CS0649 // Field 'Native.TOKEN_ELEVATION.TokenIsElevated' is never assigned to, and will always have its default value 0
         public int TokenIsElevated;
+#pragma warning restore CS0649 // Field 'Native.TOKEN_ELEVATION.TokenIsElevated' is never assigned to, and will always have its default value 0
     }
 
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode, ExactSpelling = true)]
@@ -621,7 +623,12 @@ internal class Native
                     }
 
                     NativeUsnRecordV3* record = (NativeUsnRecordV3*)currentRecordBase;
+
+#if !NO_FILENAME
                     string fileName = Encoding.Unicode.GetString(currentRecordBase + record->FileNameOffset, record->FileNameLength);
+#else
+                    string fileName = string.Empty;
+#endif
 
                     recordsToReturn.Add(
                         new UsnRecord(
@@ -643,7 +650,12 @@ internal class Native
                     }
 
                     NativeUsnRecordV2* record = (NativeUsnRecordV2*)currentRecordBase;
+
+#if !NO_FILENAME
                     string fileName = Encoding.Unicode.GetString(currentRecordBase + record->FileNameOffset, record->FileNameLength);
+#else
+                    string fileName = string.Empty;
+#endif
                     recordsToReturn.Add(
                         new UsnRecord(
                             new FileId(0, record->FileReferenceNumber),
@@ -768,7 +780,11 @@ internal class Native
                 record->Reason == 0 && record->TimeStamp == 0 && record->SourceInfo == 0,
                 "FSCTL_READ_FILE_USN_DATA scrubs 'Reason', 'TimeStamp', and 'SourceInfo' fields. Marshalling issue?");
 
+#if !NO_FILENAME
             string fileName = Encoding.Unicode.GetString(recordBuffer + record->FileNameOffset, record->FileNameLength);
+#else
+            string fileName = string.Empty;
+#endif
 
             resultRecord = new UsnRecord(
                 record->FileReferenceNumber,
@@ -790,7 +806,12 @@ internal class Native
                 record->Reason == 0 && record->TimeStamp == 0 && record->SourceInfo == 0,
                 "FSCTL_READ_FILE_USN_DATA scrubs 'Reason', 'TimeStamp', and 'SourceInfo' fields. Marshalling issue?");
 
-            string fileName = string.Empty; // Encoding.Unicode.GetString(recordBuffer + record->FileNameOffset, record->FileNameLength);
+#if !NO_FILENAME
+            string fileName = Encoding.Unicode.GetString(recordBuffer + record->FileNameOffset, record->FileNameLength);
+#else
+            string fileName = string.Empty;
+#endif
+
 
             resultRecord = new UsnRecord(
                 new FileId(0, record->FileReferenceNumber),

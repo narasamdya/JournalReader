@@ -267,9 +267,8 @@ public readonly struct Possible<TResult>
     /// </summary>
     public Possible(Failure failure)
     {
-        Contract.Requires(failure != null);
         m_failure = failure;
-        m_result = default(TResult);
+        m_result = default;
     }
 
     /// <nodoc />
@@ -363,7 +362,6 @@ public readonly struct Possible<TResult>
     /// </example>
     public Possible<TResult2> Then<TResult2>(Func<TResult, Possible<TResult2>> binder)
     {
-        Contract.Requires(binder != null);
         return Succeeded ? binder(m_result) : new Possible<TResult2>(m_failure);
     }
 
@@ -385,7 +383,6 @@ public readonly struct Possible<TResult>
     /// </summary>
     public Task<Possible<TResult2>> ThenAsync<TResult2>(Func<TResult, Task<Possible<TResult2>>> binder)
     {
-        Contract.Requires(binder != null);
         return Succeeded ? binder(m_result) : Task.FromResult(new Possible<TResult2>(m_failure));
     }
 
@@ -405,8 +402,6 @@ public readonly struct Possible<TResult>
         Func<Failure, Possible<TResult2, TFailure2>> failureBinder)
         where TFailure2 : Failure
     {
-        Contract.Requires(resultBinder != null);
-        Contract.Requires(failureBinder != null);
         return Succeeded ? resultBinder(m_result) : failureBinder(m_failure);
     }
 
@@ -422,7 +417,6 @@ public readonly struct Possible<TResult>
     /// </example>
     public Possible<TResult2> Then<TResult2>(Func<TResult, TResult2> thenFunc)
     {
-        Contract.Requires(thenFunc != null);
         return Succeeded ? new Possible<TResult2>(thenFunc(m_result)) : new Possible<TResult2>(m_failure);
     }
 
@@ -438,7 +432,6 @@ public readonly struct Possible<TResult>
     /// </example>
     public Possible<TResult2> Then<TData, TResult2>(TData data, Func<TData, TResult, TResult2> thenFunc)
     {
-        Contract.Requires(thenFunc != null);
         return Succeeded ? new Possible<TResult2>(thenFunc(data, m_result)) : new Possible<TResult2>(m_failure);
     }
 }
