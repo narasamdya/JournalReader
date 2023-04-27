@@ -1,5 +1,5 @@
 ﻿using System.Diagnostics.CodeAnalysis;
-using System.Diagnostics.Contracts;
+using System.Diagnostics.ContractsLight;
 using System.Text;
 
 namespace JournalReader;

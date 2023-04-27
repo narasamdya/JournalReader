@@ -1,6 +1,6 @@
 ﻿using Microsoft.Win32.SafeHandles;
 using System.ComponentModel;
-using System.Diagnostics.Contracts;
+using System.Diagnostics.ContractsLight;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -21,7 +21,7 @@ internal class Native
     private const uint PropertyStandardQuery = 0;
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct DEVICE_SEEK_PENALTY_DESCRIPTOR
+    private readonly struct DEVICE_SEEK_PENALTY_DESCRIPTOR
     {
         public readonly uint Version;
         public readonly uint Size;
@@ -88,11 +88,15 @@ internal class Native
     private unsafe readonly struct NativeUsnRecordV3
     {
         /// <summary>
-        /// Size of a record with two filename characters (starting at WCHAR FileName[1]; not modeled in the C# struct),
+        /// This is the pessimistic minimum size that accounts for a record with two filename characters (starting at WCHAR FileName[1]),
         /// or one filename character and two bytes of then-needed padding (zero-length filenames are disallowed).
-        /// This is the minimum size that should ever be returned.
+        /// When compiling with filename support, the size needs to be substracted with the pointer size.
         /// </summary>
+#if !NO_FILENAME
+        public static readonly int MinimumSize = Marshal.SizeOf<NativeUsnRecordV3>() - sizeof(char*);
+#else
         public static readonly int MinimumSize = Marshal.SizeOf<NativeUsnRecordV3>();
+#endif
 
         /// <summary>
         /// Maximum size of a single V3 record, assuming the NTFS / ReFS 255 character file name length limit.
@@ -132,11 +136,15 @@ internal class Native
     private unsafe readonly struct NativeUsnRecordV2
     {
         /// <summary>
-        /// Size of a record with two filename characters (starting at WCHAR FileName[1]; not modeled in the C# struct),
+        /// This is the pessimistic minimum size that accounts for a record with two filename characters (starting at WCHAR FileName[1]),
         /// or one filename character and two bytes of then-needed padding (zero-length filenames are disallowed).
-        /// This is the minimum size that should ever be returned.
+        /// When compiling with filename support, the size needs to be substracted with the pointer size.
         /// </summary>
+#if !NO_FILENAME
+        public static readonly int MinimumSize = Marshal.SizeOf<NativeUsnRecordV2>() - sizeof(char*);
+#else
         public static readonly int MinimumSize = Marshal.SizeOf<NativeUsnRecordV2>();
+#endif
 
         /// <summary>
         /// Maximum size of a single V2 record, assuming the NTFS / ReFS 255 character file name length limit.
@@ -619,7 +627,7 @@ internal class Native
                     {
                         Contract.Assert(
                             false,
-                            $"Size in record header returned by {fsctlApi} does not correspond to a valid USN_RECORD_V3. Record length: {currentRecordHeader->RecordLength} (valid length: {NativeUsnRecordV3.MinimumSize} <= length <= {NativeUsnRecordV3.MaximumSize}");
+                            $"Size in record header returned by {fsctlApi} does not correspond to a valid USN_RECORD_V3 (minor: {currentRecordHeader->MinorVersion}). Record length: {currentRecordHeader->RecordLength} (valid length: {NativeUsnRecordV3.MinimumSize} <= length <= {NativeUsnRecordV3.MaximumSize}");
                     }
 
                     NativeUsnRecordV3* record = (NativeUsnRecordV3*)currentRecordBase;
@@ -646,7 +654,7 @@ internal class Native
                     {
                         Contract.Assert(
                             false,
-                            $"Size in record header returned by {fsctlApi} does not correspond to a valid USN_RECORD_V3. Record length: {currentRecordHeader->RecordLength} (valid length: {NativeUsnRecordV2.MinimumSize} <= length <= {NativeUsnRecordV2.MaximumSize}");
+                            $"Size in record header returned by {fsctlApi} does not correspond to a valid USN_RECORD_V2 (minor: {currentRecordHeader->MinorVersion}). Record length: {currentRecordHeader->RecordLength} (valid length: {NativeUsnRecordV2.MinimumSize} <= length <= {NativeUsnRecordV2.MaximumSize}");
                     }
 
                     NativeUsnRecordV2* record = (NativeUsnRecordV2*)currentRecordBase;
@@ -772,7 +780,7 @@ internal class Native
 
             Contract.Assert(
                 bytesReturned >= NativeUsnRecordV3.MinimumSize && bytesReturned <= NativeUsnRecordV3.MaximumSize,
-                $"FSCTL_READ_FILE_USN_DATA returned an amount of data that does not correspond to a valid USN_RECORD_V3. Record length: {bytesReturned} (valid length: {NativeUsnRecordV3.MinimumSize} <= length <= {NativeUsnRecordV3.MaximumSize}.");
+                $"FSCTL_READ_FILE_USN_DATA returned an amount of data that does not correspond to a valid USN_RECORD_V3 (minor: {recordHeader->MinorVersion}). Record length: {bytesReturned} (valid length: {NativeUsnRecordV3.MinimumSize} <= length <= {NativeUsnRecordV3.MaximumSize}.");
 
             NativeUsnRecordV3* record = (NativeUsnRecordV3*)recordBuffer;
 
@@ -798,7 +806,7 @@ internal class Native
         {
             Contract.Assert(
                 bytesReturned >= NativeUsnRecordV2.MinimumSize && bytesReturned <= NativeUsnRecordV2.MaximumSize,
-                $"FSCTL_READ_FILE_USN_DATA returned an amount of data that does not correspond to a valid USN_RECORD_V2. Record length: {bytesReturned} (valid length: {NativeUsnRecordV2.MinimumSize} <= length <= {NativeUsnRecordV2.MaximumSize}.");
+                $"FSCTL_READ_FILE_USN_DATA returned an amount of data that does not correspond to a valid USN_RECORD_V2 (minor: {recordHeader->MinorVersion}). Record length: {bytesReturned} (valid length: {NativeUsnRecordV2.MinimumSize} <= length <= {NativeUsnRecordV2.MaximumSize}.");
 
             NativeUsnRecordV2* record = (NativeUsnRecordV2*)recordBuffer;
 
