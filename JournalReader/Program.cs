@@ -1,5 +1,4 @@
-﻿using System.ComponentModel;
-using static JournalReader.JournalAccessor;
+﻿using static JournalReader.JournalAccessor;
 
 namespace JournalReader;
 
