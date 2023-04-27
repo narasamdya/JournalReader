@@ -38,6 +38,9 @@ internal enum UsnChangeReasons : uint
     /// </summary>
     DataTruncation = 0x00000004,
 
+    /// <nodoc/>
+    DesiredStorageClassChange = 0x01000000,
+
     /// <summary>
     /// The user made a change to the extended attributes of a file or directory.
     /// These NTFS file system attributes are not accessible to Windows-based applications.
@@ -70,6 +73,12 @@ internal enum UsnChangeReasons : uint
     /// A user changes the FILE_ATTRIBUTE_NOT_CONTENT_INDEXED attribute.
     /// </summary>
     IndexableChange = 0x00004000,
+
+    /// <summary>
+    /// A user changed the state of the FILE_ATTRIBUTE_INTEGRITY_STREAM attribute for the given stream.
+    /// On the ReFS file system, integrity streams maintain a checksum of all data for that stream, so that the contents of the file can be validated during read or write operations.
+    /// </summary>
+    IntegrityChange = 0x00800000,
 
     /// <summary>
     /// The one or more named data streams for a file are extended (added to).
@@ -116,4 +125,11 @@ internal enum UsnChangeReasons : uint
     /// A named stream is added to or removed from a file, or a named stream is renamed.
     /// </summary>
     StreamChange = 0x00200000,
+
+    /// <summary>
+    /// The given stream is modified through a TxF transaction.
+    /// </summary>
+    TransactedChange = 0x00400000,
+
+
 }
