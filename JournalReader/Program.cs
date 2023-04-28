@@ -26,11 +26,12 @@ public class JournalReader
         Console.WriteLine("Usage: JournalReader <command> [args]");
         Console.WriteLine();
         Console.WriteLine("Commands:");
-        Console.WriteLine("  identity <path>         Get the versioned file identity for the given path");
-        Console.WriteLine("  query [path]            Query the USN journal for the given path (or all volumes if no path is given)");
-        Console.WriteLine("  read <volume path>      Read the USN journal for the given path, e.g., 'C:\\' or 'E:\\'");
-        Console.WriteLine("  volumes                 Get the volume map");
-        Console.WriteLine("  help                    Show this help");
+        Console.WriteLine("  identity <path>              Get the versioned file identity for the given path");
+        Console.WriteLine("  query [path]                 Query the USN journal for the given path (or all volumes if no path is given)");
+        Console.WriteLine("  read <volume path> [wait]    Read the USN journal for the given path, e.g., 'C:\\' or 'E:\\'");
+        Console.WriteLine("                               Optionally pass 'wait' to pause for each USN record entry");
+        Console.WriteLine("  volumes                      Get the volume map");
+        Console.WriteLine("  help                         Show this help");
 
         return 0;
     }
