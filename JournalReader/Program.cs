@@ -14,10 +14,25 @@ public class JournalReader
             "QUERY"    => QueryUsnJournal(args.Length >= 2 ? args[1] : null),
             "READ"     => ReadUsnJournal(args[1], args.Length >= 3 && args[2].ToUpperInvariant() == "WAIT"),
             "VOLUMES"  => GetVolumes(),
+            "HELP"     => ShowHelp(),
             _ => throw new ArgumentException($"Unknown command: {cmd}"),
         }; ;
 
         return exitCode;
+    }
+
+    private static int ShowHelp()
+    {
+        Console.WriteLine("Usage: JournalReader <command> [args]");
+        Console.WriteLine();
+        Console.WriteLine("Commands:");
+        Console.WriteLine("  identity <path>         Get the versioned file identity for the given path");
+        Console.WriteLine("  query [path]            Query the USN journal for the given path (or all volumes if no path is given)");
+        Console.WriteLine("  read <volume path>      Read the USN journal for the given path, e.g., 'C:\\' or 'E:\\'");
+        Console.WriteLine("  volumes                 Get the volume map");
+        Console.WriteLine("  help                    Show this help");
+
+        return 0;
     }
 
     private static int GetVolumes()
