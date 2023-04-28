@@ -13,4 +13,5 @@ Provide a simple way to read Windows USN change journal. This program is meant t
    - To build with file name retrieval disabled, add `/p:ExtraDefineConstants=NO_FILENAME`
 
 *Run*:
+- `cd JournalReader`
 - `dotnet run help` (see the help message for more details)
