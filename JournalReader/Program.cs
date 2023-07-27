@@ -41,7 +41,7 @@ public class JournalReader
         Possible<VolumeMap> maybeVolumeMap = VolumeMap.CreateMapOfAllLocalVolumes();
         if (!maybeVolumeMap.Succeeded)
         {
-            Console.Error.WriteLine($"Failed to get volume map: {maybeVolumeMap.Failure.DescribeIncludingInnerFailures()}");
+            PrintError($"Failed to get volume map: {maybeVolumeMap.Failure.DescribeIncludingInnerFailures()}");
             return -1;
         }
 
@@ -54,7 +54,7 @@ public class JournalReader
 
             if (!maybePathNames.Succeeded)
             {
-                Console.Error.WriteLine($"  {volumeGuidPath.Value} ({volumeGuidPath.Key}): {volumeGuidPath.Key} -- <error: {maybePathNames.Failure.DescribeIncludingInnerFailures()}>");
+                PrintError($"  {volumeGuidPath.Value} ({volumeGuidPath.Key}): {volumeGuidPath.Key} -- <error: {maybePathNames.Failure.DescribeIncludingInnerFailures()}>");
                 continue;
             }
 
@@ -72,18 +72,18 @@ public class JournalReader
 
         if (!maybeResult.Succeeded)
         {
-            Console.Error.WriteLine($"Failed to get versioned file identity for '{path}': {maybeResult.Failure.DescribeIncludingInnerFailures()}");
+            PrintError($"Failed to get versioned file identity for '{path}': {maybeResult.Failure.DescribeIncludingInnerFailures()}");
             return -1;
         }
 
-        (FileIdAndVolumeId fileIdAndVolumeId, UsnRecord usnRecord) result = maybeResult.Result;
+        (FileIdAndVolumeId fileIdAndVolumeId, UsnRecord usnRecord) = maybeResult.Result;
 
         Console.WriteLine($"Versioned file identity for '{path}':");
-        Console.WriteLine($"  File ID              : {result.fileIdAndVolumeId.FileId}");
-        Console.WriteLine($"  Volume serial number : {result.fileIdAndVolumeId.VolumeSerialNumber}");
-        Console.WriteLine($"  File name            : {result.usnRecord.FileName}");
-        Console.WriteLine($"  USN                  : {result.usnRecord.Usn}");
-        Console.WriteLine($"  Time stamp           : {DateTime.FromFileTimeUtc(result.usnRecord.Timestamp)}");
+        Console.WriteLine($"  File ID              : {fileIdAndVolumeId.FileId}");
+        Console.WriteLine($"  Volume serial number : {fileIdAndVolumeId.VolumeSerialNumber}");
+        Console.WriteLine($"  File name            : {usnRecord.FileName}");
+        Console.WriteLine($"  USN                  : {usnRecord.Usn}");
+        Console.WriteLine($"  Time stamp           : {DateTime.FromFileTime(usnRecord.Timestamp)}");
 
         return 0;
     }
@@ -94,7 +94,7 @@ public class JournalReader
 
         if (!maybeVolumeMap.Succeeded)
         {
-            Console.Error.WriteLine($"Failed to get volume map: {maybeVolumeMap.Failure.DescribeIncludingInnerFailures()}");
+            PrintError($"Failed to get volume map: {maybeVolumeMap.Failure.DescribeIncludingInnerFailures()}");
             return -1;
         }
 
@@ -103,7 +103,7 @@ public class JournalReader
 
         if (!maybeAccessor.Succeeded)
         {
-            Console.Error.WriteLine($"Failed to get journal accessor: {maybeAccessor.Failure.DescribeIncludingInnerFailures()}");
+            PrintError($"Failed to get journal accessor: {maybeAccessor.Failure.DescribeIncludingInnerFailures()}");
             return -1;
         }
 
@@ -112,7 +112,7 @@ public class JournalReader
         Possible<(VolumeGuidPath volumePath, ulong serial)> maybeVolumeGuidPath = Native.GetVolumeGuidPathAndSerialOrFail(mountPoint);
         if (!maybeVolumeGuidPath.Succeeded)
         {
-            Console.Error.WriteLine($"Failed getting volume GUID path for '{mountPoint}': {maybeVolumeGuidPath.Failure.DescribeIncludingInnerFailures()}");
+            PrintError($"Failed getting volume GUID path for '{mountPoint}': {maybeVolumeGuidPath.Failure.DescribeIncludingInnerFailures()}");
             return -1;
         }
 
@@ -121,8 +121,14 @@ public class JournalReader
         MaybeResponse<QueryUsnJournalResult> response = journalAccessor.QueryJournal(new QueryJournalRequest(volumeGuidPath));
         if (response.IsError)
         {
-            Console.Error.WriteLine($"Failed querying journal for path '{volumeGuidPath}' ({mountPoint}): {response.Error.Message} ({response.Error.Status})");
+            PrintError($"Failed querying journal for path '{volumeGuidPath}' ({mountPoint}): {response.Error.Message} ({response.Error.Status})");
             return -1;
+        }
+
+        if (journalAccessor.IsJournalUnprivileged)
+        {
+            PrintWarning("File name can be empty due to accessing journal in unprivileged mode");
+            Console.WriteLine();
         }
 
         QueryUsnJournalResult result = response.Response;
@@ -135,7 +141,7 @@ public class JournalReader
                 Console.WriteLine($"File name  : {record.FileName}");
                 Console.WriteLine($"USN        : {record.Usn}");
                 Console.WriteLine($"Change     : {record.Reason}");
-                Console.WriteLine($"Time:      : {DateTime.FromFileTimeUtc(record.Timestamp)}");
+                Console.WriteLine($"Time:      : {DateTime.FromFileTime(record.Timestamp)}");
                 Console.WriteLine();
                 if (wait)
                 {
@@ -153,7 +159,7 @@ public class JournalReader
 
         if (!maybeVolumeMap.Succeeded)
         {
-            Console.Error.WriteLine($"Failed to get volume map: {maybeVolumeMap.Failure.DescribeIncludingInnerFailures()}");
+            PrintError($"Failed to get volume map: {maybeVolumeMap.Failure.DescribeIncludingInnerFailures()}");
             return -1;
         }
 
@@ -162,7 +168,7 @@ public class JournalReader
 
         if (!maybeAccessor.Succeeded)
         {
-            Console.Error.WriteLine($"Failed to get journal accessor: {maybeAccessor.Failure.DescribeIncludingInnerFailures()}");
+            PrintError($"Failed to get journal accessor: {maybeAccessor.Failure.DescribeIncludingInnerFailures()}");
             return -1;
         }
 
@@ -174,7 +180,7 @@ public class JournalReader
             Possible<(VolumeGuidPath volumePath, ulong serial)> maybeVolumeGuidPath = Native.GetVolumeGuidPathAndSerialOrFail(mountPoint);
             if (!maybeVolumeGuidPath.Succeeded)
             {
-                Console.Error.WriteLine($"Failed getting volume GUID path for '{mountPoint}': {maybeVolumeGuidPath.Failure.DescribeIncludingInnerFailures()}");
+                PrintError($"Failed getting volume GUID path for '{mountPoint}': {maybeVolumeGuidPath.Failure.DescribeIncludingInnerFailures()}");
                 return -1;
             }
 
@@ -200,7 +206,7 @@ public class JournalReader
             MaybeResponse<QueryUsnJournalResult> response = journalAccessor.QueryJournal(new QueryJournalRequest(volume));
             if (response.IsError)
             {
-                Console.Error.WriteLine($"Failed querying journal for path '{volume}' ({pathNamesString}): {response.Error.Message} ({response.Error.Status})");
+                PrintError($"Failed querying journal for path '{volume}' ({pathNamesString}): {response.Error.Message} ({response.Error.Status})");
                 continue;
             }
 
@@ -224,4 +230,21 @@ public class JournalReader
 
         return 0;
     }
+
+    private static void PrintError(string message)
+    {
+        var fg = Console.ForegroundColor;
+        Console.ForegroundColor = ConsoleColor.Red;
+        Console.Error.WriteLine(message);
+        Console.ForegroundColor = fg;
+    }
+
+    private static void PrintWarning(string message) 
+    {
+        var fg = Console.ForegroundColor;
+        Console.ForegroundColor = ConsoleColor.Yellow;
+        Console.WriteLine(message);
+        Console.ForegroundColor = fg;
+    }
+
 }
